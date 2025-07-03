@@ -20,9 +20,6 @@ class MIQPDataset(Dataset):
         self.df['z_neg_arr'] = self.df[z_neg_cols].values.tolist()
         self.df['label'] = self.df.apply(lambda row: np.concatenate([row['z_pos_arr'], row['z_neg_arr']]), axis=1)
 
-        self.df.sort_values('t', inplace=True)
-        self.df.reset_index(drop=True, inplace=True)
-
         self.y_arr = self.df['y_t'].values
         self.u_arr = self.df['u_tm1'].values
         self.labels = np.stack(self.df['label'].values)
@@ -35,14 +32,19 @@ class MIQPDataset(Dataset):
         self.y_norm = (self.y_arr - self.y_mean) / self.y_std
         self.u_norm = (self.u_arr - self.u_mean) / self.u_std
 
+        # 计算有效的数据索引范围，避免跨越仿真边界
+        self.valid_indices = [i for i in range(len(self.df) - self.N + 1) if self.df.iloc[i + self.N - 1]['t'] < 200]
+
     def __len__(self):
-        return len(self.df) - self.N + 1
+        return len(self.valid_indices)
 
     def __getitem__(self, idx):
-        y_seq = self.y_norm[idx:idx + self.N]
-        u_seq = self.u_norm[idx:idx + self.N]
+        # 使用有效索引
+        true_idx = self.valid_indices[idx]
+        y_seq = self.y_norm[true_idx:true_idx + self.N]
+        u_seq = self.u_norm[true_idx:true_idx + self.N]
         x = np.concatenate([y_seq, u_seq])
-        label = self.labels[idx + self.N - 1]
+        label = self.labels[true_idx + self.N - 1]
         return torch.tensor(x, dtype=torch.float32), torch.tensor(label, dtype=torch.float32)
 
 class MIQPNet(nn.Module):
@@ -102,7 +104,7 @@ if __name__ == "__main__":
     N = 10
     Nc = 10
     batch_size = 64
-    epochs = 30
+    epochs = 100
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 创建数据集

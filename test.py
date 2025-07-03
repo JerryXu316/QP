@@ -123,10 +123,10 @@ def simulate_single_trajectory(seed):
 
 # 多线程并行仿真
 def main():
-    num_samples = 100  # 仿真次数
+    num_samples = 1000  # 仿真次数
     seeds = np.random.randint(0, 1000, num_samples)
 
-    with Pool(processes=12) as pool:
+    with Pool(processes=13) as pool:
         results = pool.map(simulate_single_trajectory, seeds)
 
     # 合并所有结果
