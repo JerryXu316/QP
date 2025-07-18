@@ -4,10 +4,12 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
-# system
-Ts, tau, K = 1.0, 20.0, 0.8
+# 系统参数
+Ts = 1
+tau = 20
+K = 0.8
 a = np.exp(-Ts / tau)
-b = K * (1 - a)
+b = K * tau * (1 - a)
 # ========= MPC =========
 Np, Nc, delay = 50, 10, 15
 N_sim = 500

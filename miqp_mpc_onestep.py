@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import time
 
 # =================  系统参数  =================
-Ts   = 1.0
-tau  = 20.0
-K    = 0.8
-a    = np.exp(-Ts / tau)
-b    = K * (1 - a)
-
+# 系统参数
+Ts = 1
+tau = 20
+K = 0.8
+a = np.exp(-Ts / tau)
+b = K * tau * (1 - a)
 # =================  MPC 参数  =================
 Np      = 50          # 预测步长
 delay   = 15          # 纯延迟

@@ -5,11 +5,11 @@ import pandas as pd
 from multiprocessing import Pool
 
 # =================  系统参数（固定）  =================
-Ts   = 1
-tau  = 20
-K    = 0.8
-a    = np.exp(-Ts / tau)
-b    = K * (1 - a)
+Ts = 1
+tau = 20
+K = 0.8
+a = np.exp(-Ts / tau)
+b = K * tau * (1 - a)
 
 # =================  MPC 参数（固定）  =================
 Np     = 50

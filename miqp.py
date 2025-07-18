@@ -10,8 +10,7 @@ Ts = 1
 tau = 20
 K = 0.8
 a = np.exp(-Ts / tau)
-b = K * (1 - a)
-
+b = K * tau * (1 - a)
 # MPC参数
 Np = 50
 Nc = 10
