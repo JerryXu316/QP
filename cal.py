@@ -1,39 +1,30 @@
-import numpy as np
+import gurobipy as gp
+from gurobipy import GRB
 
+# Create a new model
+m = gp.Model("qcp")
 
-def print_matrix_powers(A, max_power):
-    """
-    打印矩阵 A 的幂次结构，从 A^1 到 A^max_power。
+# Create variables
+x = m.addVar(name="x")
+y = m.addVar(name="y")
+z = m.addVar(name="z")
 
-    参数:
-    A -- 输入矩阵
-    max_power -- 最大幂次
-    """
-    print(f"矩阵 A 的维度: {A.shape}")
-    for i in range(1, max_power + 1):
-        power_matrix = np.linalg.matrix_power(A, i)
-        print(f"A^{i} =")
-        print(power_matrix)
-        print()
+# Set objective: x
+obj = 1.0*x
+m.setObjective(obj, GRB.MAXIMIZE)
 
+# Add constraint: x + y + z = 1
+m.addConstr(x + y + z == 1, "c0")
 
-# 定义系统参数
-K = 0.8  # 增益
-T = 20  # 时间常数
-Ts = 1  # 采样时间
-D = 15  # 延迟
+# Add second-order cone: x^2 + y^2 <= z^2
+m.addConstr(x**2 + y**2 <= z**2, "qc0")
 
-# 计算离散化系数
-a = np.exp(-Ts / T)
-b0 = K * T * (1 - a)
+# Add rotated cone: x^2 <= yz
+m.addConstr(x**2 <= y*z, "qc1")
 
-# 构建状态矩阵 A
-n = D + 1  # 状态向量的维度
-A = np.zeros((n, n))
-A[0, 0] = a
-A[0, -1] = b0
-for i in range(1, n):
-    A[i, i - 1] = 1
+m.optimize()
 
-# 打印矩阵 A 的幂次结构
-print_matrix_powers(A, 10)
+for v in m.getVars():
+    print('%s %g' % (v.VarName, v.X))
+
+print('Obj: %g' % obj.getValue())
