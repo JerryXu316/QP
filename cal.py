@@ -1,30 +1,12 @@
-import gurobipy as gp
-from gurobipy import GRB
+from simple_gurobi import solve_miqp_gurobi
 
-# Create a new model
-m = gp.Model("qcp")
+# 构造你的优化参数（Q, c, A, b等），例如
+import numpy as np
+Q = np.array([[2, 0], [0, 2]])
+c = np.array([1, 1])
+A = np.array([[1, 2]])
+b = np.array([4])
 
-# Create variables
-x = m.addVar(name="x")
-y = m.addVar(name="y")
-z = m.addVar(name="z")
-
-# Set objective: x
-obj = 1.0*x
-m.setObjective(obj, GRB.MAXIMIZE)
-
-# Add constraint: x + y + z = 1
-m.addConstr(x + y + z == 1, "c0")
-
-# Add second-order cone: x^2 + y^2 <= z^2
-m.addConstr(x**2 + y**2 <= z**2, "qc0")
-
-# Add rotated cone: x^2 <= yz
-m.addConstr(x**2 <= y*z, "qc1")
-
-m.optimize()
-
-for v in m.getVars():
-    print('%s %g' % (v.VarName, v.X))
-
-print('Obj: %g' % obj.getValue())
+# 调用求解函数
+result = solve_miqp_gurobi(Q=Q, c=c, A=A, b=b)
+print(result)
