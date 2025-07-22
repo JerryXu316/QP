@@ -13,26 +13,26 @@ D = 15
 P = 50
 M = 10
 total_steps = 200
-external_disturbances = 0.01
-
+external_disturbances = 0.005
 
 # 约束
 u_min = -1.0
 u_max = 1.0
-delta_u_min = -0.1  # delta_u 的最小值
-delta_u_max = 0.1   # delta_u 的最大值
 
 # 定义代价函数的权重系数
-Q = np.ones(P) * 1.0  # 对应 err 的权重系数
-R = np.ones(M) * 0.0  # 对应 U 的权重系数
-R_delta = np.ones(M) * 0.00000000001  # 对应 U[i+1] - U[i] 的权重系数
+Q = np.diag(np.ones(P) * 1.0)  # 对应 err 的权重矩阵
+R = np.diag(np.ones(M) * 0.01)  # 对应 U 的权重矩阵
+R_delta = np.diag(np.ones(M) * 0.01)  # 对应 U[i+1] - U[i] 的权重矩阵
 
+# 定义 delta_u 的上下界
+delta_u_min = -0.5  # delta_u 的最小值
+delta_u_max = 0.5   # delta_u 的最大值
 
 # 离散化系数
 a_model = np.exp(-Ts / T_model)
-b0_model = K_model  * (1 - a_model)
+b0_model = K_model * (1 - a_model)
 a_actual = np.exp(-Ts / T_actual)
-b0_actual = K_actual  * (1 - a_actual)
+b0_actual = K_actual * (1 - a_actual)
 
 # 状态矩阵
 n = D + 1
@@ -93,31 +93,29 @@ for k in range(total_steps):
     U = model.addMVar(M, lb=u_min, ub=u_max, vtype=GRB.CONTINUOUS, name="U")
 
     # numpy预计算：输出偏置
-    y_offset =  Fy @  x_model.T # numpy array，长度P
+    y_offset = Fy @ x_model.T  # numpy array，长度P
 
     # Gurobi表达式：Gy@U是MLinExpr
     y_pred = y_offset + Gy @ U  # 预测输出，长度P
 
     # 引入辅助变量 err
     err = model.addMVar(P, lb=-GRB.INFINITY, ub=GRB.INFINITY, name="err")
-
-
-
     for i in range(P):
         y_offset_i = float(y_offset[i])
         gyu_i = Gy[i, :] @ U
         model.addConstr(err[i] == y_offset_i + gyu_i - r[i])
-    cost = gp.QuadExpr()
 
-    for i in range(P):
-        cost += Q[i] * err[i] * err[i]  # 加权的 err 项
-    for i in range(M):
-        cost += R[i] * U[i] * U[i]  # 加权的 U 项
-    cost += R_delta[0] * (U[0] - u_previous) * (U[0] - u_previous)  # 加权的 U[0] - u_previous 项
+    delta_u = model.addMVar(M, lb=delta_u_min, ub=delta_u_max, name="delta_u")
+    model.addConstr(delta_u[0] == U[0] - u_previous)
     for i in range(M - 1):
-        cost += R_delta[i + 1] * (U[i + 1] - U[i]) * (U[i + 1] - U[i])  # 加权的 U[i+1] - U[i] 项
-    model.setObjective(cost, GRB.MINIMIZE)
+         model.addConstr(delta_u[i + 1] == U[i + 1] - U[i])
 
+    # 构建代价函数
+    cost = gp.QuadExpr()
+    cost +=  err @ Q @ err  # 加权的 err 项
+    cost += U @ R @ U  # 加权的 U 项
+    cost += delta_u @ R_delta @ delta_u
+    model.setObjective(cost, GRB.MINIMIZE)
 
     # 优化求解
     model.optimize()
