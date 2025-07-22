@@ -12,19 +12,27 @@ Ts = 1
 D = 15
 P = 50
 M = 10
-total_steps = 70
+total_steps = 200
 external_disturbances = 0.01
-measurement_noise = 0.005
+
 
 # 约束
 u_min = -1.0
 u_max = 1.0
+delta_u_min = -0.1  # delta_u 的最小值
+delta_u_max = 0.1   # delta_u 的最大值
+
+# 定义代价函数的权重系数
+Q = np.ones(P) * 1.0  # 对应 err 的权重系数
+R = np.ones(M) * 0.0  # 对应 U 的权重系数
+R_delta = np.ones(M) * 0.00000000001  # 对应 U[i+1] - U[i] 的权重系数
+
 
 # 离散化系数
 a_model = np.exp(-Ts / T_model)
-b0_model = K_model * T_model * (1 - a_model)
+b0_model = K_model  * (1 - a_model)
 a_actual = np.exp(-Ts / T_actual)
-b0_actual = K_actual * T_actual * (1 - a_actual)
+b0_actual = K_actual  * (1 - a_actual)
 
 # 状态矩阵
 n = D + 1
@@ -78,8 +86,8 @@ y_actual_history = np.zeros(total_steps)
 u_history = np.zeros(total_steps)
 
 for k in range(total_steps):
-    model = gp.Model("MPC")
-    model.Params.LogToConsole = 0  # 关闭Gurobi输出
+    u_previous = u_history[k]
+    model = gp.Model("qp")
 
     # 控制变量
     U = model.addMVar(M, lb=u_min, ub=u_max, vtype=GRB.CONTINUOUS, name="U")
@@ -92,19 +100,22 @@ for k in range(total_steps):
 
     # 引入辅助变量 err
     err = model.addMVar(P, lb=-GRB.INFINITY, ub=GRB.INFINITY, name="err")
-    print("y_offset[]", y_offset)
+
+
+
     for i in range(P):
         y_offset_i = float(y_offset[i])
         gyu_i = Gy[i, :] @ U
-        print("y_offset_i", y_offset_i)
         model.addConstr(err[i] == y_offset_i + gyu_i - r[i])
     cost = gp.QuadExpr()
+
     for i in range(P):
-        cost += err[i] * err[i]
+        cost += Q[i] * err[i] * err[i]  # 加权的 err 项
     for i in range(M):
-        cost += U[i] * U[i]
+        cost += R[i] * U[i] * U[i]  # 加权的 U 项
+    cost += R_delta[0] * (U[0] - u_previous) * (U[0] - u_previous)  # 加权的 U[0] - u_previous 项
     for i in range(M - 1):
-        cost += (U[i + 1] - U[i]) * (U[i + 1] - U[i])
+        cost += R_delta[i + 1] * (U[i + 1] - U[i]) * (U[i + 1] - U[i])  # 加权的 U[i+1] - U[i] 项
     model.setObjective(cost, GRB.MINIMIZE)
 
 
@@ -114,20 +125,12 @@ for k in range(total_steps):
 
     # 应用第一个控制输入到实际系统
     u = u_optimal[0]
-    print("A_actual = ", A_actual)
-    print("x_actual = ", x_actual)
-    print("u = ", u)
     x_actual = x_actual @ A_actual.T + (b * u).T
-    print("u_optimal", u_optimal)
-    print("x_actual", x_actual)
-    print("c = ", C)
     y_actual = x_actual @ C
     y_actual = float(np.squeeze(y_actual))
-    print("y_actual = ", y_actual)
 
     # 添加干扰和噪声
     y_actual += np.random.normal(0, external_disturbances)
-    y_actual += np.random.normal(0, measurement_noise)
 
     # 保存
     y_actual_history[k] = y_actual

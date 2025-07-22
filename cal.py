@@ -1,12 +1,52 @@
-from simple_gurobi import solve_miqp_gurobi
+#!/usr/bin/env python3.7
 
-# 构造你的优化参数（Q, c, A, b等），例如
-import numpy as np
-Q = np.array([[2, 0], [0, 2]])
-c = np.array([1, 1])
-A = np.array([[1, 2]])
-b = np.array([4])
+# Copyright 2025, Gurobi Optimization, LLC
 
-# 调用求解函数
-result = solve_miqp_gurobi(Q=Q, c=c, A=A, b=b)
-print(result)
+# This example formulates and solves the following simple QP model:
+#  minimize
+#      x^2 + x*y + y^2 + y*z + z^2 + 2 x
+#  subject to
+#      x + 2 y + 3 z >= 4
+#      x +   y       >= 1
+#      x, y, z non-negative
+#
+# It solves it once as a continuous model, and once as an integer model.
+
+import gurobipy as gp
+from gurobipy import GRB
+
+# Create a new model
+m = gp.Model("qp")
+
+# Create variables
+x = m.addVar(ub=1.0, name="x")
+y = m.addVar(ub=1.0, name="y")
+z = m.addVar(ub=1.0, name="z")
+
+# Set objective: x^2 + x*y + y^2 + y*z + z^2 + 2 x
+obj = x**2 + x*y + y**2 + y*z + z**2 + 2*x
+m.setObjective(obj)
+
+# Add constraint: x + 2 y + 3 z >= 4
+m.addConstr(x + 2 * y + 3 * z >= 4, "c0")
+
+# Add constraint: x + y >= 1
+m.addConstr(x + y >= 1, "c1")
+
+m.optimize()
+
+for v in m.getVars():
+    print('%s %g' % (v.VarName, v.X))
+
+print('Obj: %g' % obj.getValue())
+
+x.VType = GRB.INTEGER
+y.VType = GRB.INTEGER
+z.VType = GRB.INTEGER
+
+m.optimize()
+
+for v in m.getVars():
+    print('%s %g' % (v.VarName, v.X))
+
+print('Obj: %g' % obj.getValue())
