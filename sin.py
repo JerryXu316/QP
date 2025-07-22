@@ -12,15 +12,15 @@ Ts = 1
 D = 15
 P = 50
 M = 10
-total_steps = 200
-external_disturbances = 0.05
+total_steps = 300
+external_disturbances = 0.01
 
 # 约束
-u_min = -1.0
-u_max = 1.0
-delta_u_min = -0.5
-delta_u_max = 0.5
+u_min = -10.0
+u_max = 10.0
 
+delta_u_min = -5.0
+delta_u_max = 5.0
 
 # 定义代价函数的权重系数
 Q = np.diag(np.ones(P) * 1.0)  # 对应 err 的权重矩阵
@@ -29,7 +29,9 @@ R_delta = np.diag(np.ones(M) * 0.01)  # 对应 U[i+1] - U[i] 的权重矩阵
 
 
 # 控制目标
-r = np.ones(total_steps + P) * 1.0
+r = np.zeros(total_steps + P)
+for i in range(total_steps + P):
+    r[i] = 0.5 * np.sin(2 * np.pi * (1.0 / 100.0) * i) + 1.0
 
 # 离散化系数
 a_model = np.exp(-Ts / T_model)
