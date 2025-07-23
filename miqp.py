@@ -20,7 +20,8 @@ u_min = -2.0
 u_max = 2.0
 delta_u_min = -100
 delta_u_max = 100
-
+positive_delta_u_constrain = 0.8
+negative_delta_u_constrain = -0.8
 
 # 定义代价函数的权重系数
 Q = np.diag(np.ones(P) * 1.0)  # 对应 err 的权重矩阵
@@ -117,8 +118,8 @@ for k in range(total_steps):
     # 添加 p 和 q 的约束
     for i in range(M):
         model.addConstr(p[i] + q[i] <= 1)
-        model.addConstr(delta_u[i] <= -0.8 * p[i] + delta_u_max * (1 - p[i]))
-        model.addConstr(delta_u[i] >= 0.8 * q[i] + delta_u_min * (1 -q[i]))
+        model.addConstr(delta_u[i] <= negative_delta_u_constrain * p[i] + delta_u_max * (1 - p[i]))
+        model.addConstr(delta_u[i] >= positive_delta_u_constrain * q[i] + delta_u_min * (1 - q[i]))
         model.addConstr(delta_u[i] <= delta_u_max * q[i])
         model.addConstr(delta_u[i] >= delta_u_min * p[i])
 

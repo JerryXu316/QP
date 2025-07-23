@@ -13,7 +13,7 @@ D = 15
 P = 50
 M = 10
 total_steps = 300
-external_disturbances = 0.01
+external_disturbances = 0.1
 
 # 约束
 u_min = -10.0
