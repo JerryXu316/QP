@@ -89,7 +89,7 @@ u_history = np.zeros(total_steps)
 for k in range(total_steps):
     u_previous = u_history[k - 1] if k > 0 else 0
     # 创建模型
-    model = gp.Model("miqp_demo")
+    model = gp.Model()
 
     # 控制变量
     U = model.addMVar(M, lb=u_min, ub=u_max, vtype=GRB.CONTINUOUS, name="U")
