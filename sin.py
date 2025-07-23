@@ -44,13 +44,13 @@ n = D + 1
 A_model = np.zeros((n, n))
 A_model[0, 0] = a_model
 A_model[0, -1] = b0_model
-for i in range(1, n):
+for i in range(2, n):
     A_model[i, i - 1] = 1
 
 A_actual = np.zeros((n, n))
 A_actual[0, 0] = a_actual
 A_actual[0, -1] = b0_actual
-for i in range(1, n):
+for i in range(2, n):
     A_actual[i, i - 1] = 1
 
 b = np.zeros((n, 1))
@@ -91,7 +91,7 @@ y_actual_history = np.zeros(total_steps)
 u_history = np.zeros(total_steps)
 
 for k in range(total_steps):
-    u_previous = u_history[k]
+    u_previous = u_history[k - 1]
     model = gp.Model("qp")
 
     # 控制变量
