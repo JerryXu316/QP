@@ -1,21 +1,15 @@
-import gurobipy as gp
-from gurobipy import GRB
+import numpy as np
+from scipy.linalg import expm
 
-model = gp.Model("miqp_demo")
+# 定义一个矩阵（numpy 数组）
+A = np.array([[1, 2], [3, 4]])
 
-# 变量
-x = model.addVar(vtype=GRB.CONTINUOUS, name='x')
-y = model.addVar(vtype=GRB.BINARY, name='y')
+# 用 scipy 计算矩阵指数
+expA = expm(A)  # 直接返回 numpy 数组
 
-# 约束
-model.addConstr(x + y == 1)
+# 检查类型
+print(type(expA))  # 输出: <class 'numpy.ndarray'>
 
-# 二次目标
-obj = x * x + 2 * x * y + y  # x^2 + 2xy + y
-model.setObjective(obj, GRB.MINIMIZE)
-
-model.optimize()
-
-if model.status == GRB.OPTIMAL:
-    print("x =", x.X)
-    print("y =", y.X)
+# 可以直接进行 numpy 计算
+result = expA @ expA  # 矩阵乘法（@ 是 numpy 的矩阵乘法运算符）
+print(result)
