@@ -17,10 +17,12 @@ total_steps = 100
 external_disturbances = 0.01
 
 # 约束
-u_min = -2.0
-u_max = 2.0
-delta_u_min = -0.5
-delta_u_max = 0.5
+u_min = -3.0
+u_max = 3.0
+delta_u_min = -1.5
+delta_u_max = 1.5
+positive_delta_u_constrain = 0.8
+negative_delta_u_constrain = -0.8
 
 
 # 定义代价函数的权重系数
@@ -128,33 +130,44 @@ y_actual_history = np.zeros(total_steps)
 u_history = np.zeros(total_steps)
 
 for k in range(total_steps):
-    u_previous = u_history[k - 1]
-    model = gp.Model("qp")
+    u_previous = u_history[k - 1] if k > 0 else 0
+    # 创建模型
+    model = gp.Model()
 
     # 控制变量
     U = model.addMVar(M, lb=u_min, ub=u_max, vtype=GRB.CONTINUOUS, name="U")
 
-    # numpy预计算：输出偏置
-    y_offset = Fy @ x_model.T  # numpy array，长度P
-
-    # Gurobi表达式：Gy@U是MLinExpr
-    y_pred = y_offset + Gy @ U  # 预测输出，长度P
-
     # 引入辅助变量 err
     err = model.addMVar(P, lb=-GRB.INFINITY, ub=GRB.INFINITY, name="err")
-    for i in range(P):
-        y_offset_i = float(y_offset[i])
-        gyu_i = Gy[i, :] @ U
-        model.addConstr(err[i] == y_offset_i + gyu_i - r[k + i])
 
+    # 引入二进制变量 p(i) 和 q(i)
+    p = model.addMVar(M, vtype=GRB.BINARY, name="p")
+    q = model.addMVar(M, vtype=GRB.BINARY, name="q")
+
+    # 计算 y_offset
+    y_offset = Fy @ x_model.T
+
+    # 添加 err 的约束
+    for i in range(P):
+        model.addConstr(err[i] == y_offset[i] + Gy[i, :] @ U - r[k + i])
+
+    # 添加 delta_u 的约束
     delta_u = model.addMVar(M, lb=delta_u_min, ub=delta_u_max, name="delta_u")
     model.addConstr(delta_u[0] == U[0] - u_previous)
-    for i in range(M - 1):
-         model.addConstr(delta_u[i + 1] == U[i + 1] - U[i])
+    for i in range(1, M):
+        model.addConstr(delta_u[i] == U[i] - U[i - 1])
+
+    # 添加 p 和 q 的约束
+    for i in range(M):
+        model.addConstr(p[i] + q[i] <= 1)
+        model.addConstr(delta_u[i] <= negative_delta_u_constrain * p[i] + delta_u_max * (1 - p[i]))
+        model.addConstr(delta_u[i] >= positive_delta_u_constrain * q[i] + delta_u_min * (1 - q[i]))
+        model.addConstr(delta_u[i] <= delta_u_max * q[i])
+        model.addConstr(delta_u[i] >= delta_u_min * p[i])
 
     # 构建代价函数
     cost = gp.QuadExpr()
-    cost +=  err @ Q @ err  # 加权的 err 项
+    cost += err @ Q @ err  # 加权的 err 项
     cost += U @ R @ U  # 加权的 U 项
     cost += delta_u @ R_delta @ delta_u
     model.setObjective(cost, GRB.MINIMIZE)

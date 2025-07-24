@@ -13,7 +13,7 @@ Ts = 1
 D = 15
 P = 50
 M = 10
-total_steps = 100
+total_steps = 300
 external_disturbances = 0.01
 
 # 约束
@@ -30,7 +30,9 @@ R_delta = np.diag(np.ones(M) * 0.001)  # 对应 U[i+1] - U[i] 的权重矩阵
 
 
 # 控制目标
-r = np.ones(total_steps + P) * 1.0
+r = np.zeros(total_steps + P)
+for i in range(total_steps + P):
+    r[i] = 0.5 * np.sin(2 * np.pi * (1.0 / 100.0) * i) + 1.0
 
 #连续方程系数
 A_0_model = np.zeros((2,2))
