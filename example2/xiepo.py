@@ -43,9 +43,9 @@ R_delta1 = np.diag(np.ones(M) * 0.001)  # 对应 U[i+1] - U[i] 的权重矩阵
 R_delta2 = np.diag(np.ones(M) * 0.001)  # 对应 U[i+1] - U[i] 的权重矩阵
 
 
-# 控制目标
-r_1 = np.ones(total_steps + P) * 1.0
-r_2 = np.ones(total_steps + P) * 1.0
+# 替换原来的r_1和r_2定义
+r_1 = np.linspace(1.0, 2.0, total_steps + P)  # 从1.0线性增加到2.0
+r_2 = np.linspace(1.0, 1.5, total_steps + P)  # 从1.0线性增加到1.5
 
 #连续方程系数
 A_0_model = np.zeros((2,2))
