@@ -23,24 +23,29 @@ Ts = 1
 D = 15
 P = 50
 M = 10
-total_steps = 500
+total_steps = 1000
 external_disturbances = 0.01
 
 # 约束
-u1_min = -100.0
-u1_max = 100.0
-u2_min = -100.0
-u2_max = 100.0
-delta_u1_min = -20.0
-delta_u1_max = 20.0
-delta_u2_min = -20.0
-delta_u2_max = 20.0
+u1_min = -2.0
+u1_max = 2.0
+u2_min = -2.0
+u2_max = 2.0
+delta_u1_min = -0.5
+delta_u1_max = 0.5
+delta_u2_min = -0.5
+delta_u2_max = 0.5
+positive_delta_u1_constrain = 0.2
+negative_delta_u1_constrain = -0.2
+positive_delta_u2_constrain = 0.2
+negative_delta_u2_constrain = -0.2
+
 
 # 定义代价函数的权重系数
 Q1 = np.diag(np.ones(P) * 1.0)  # 对应 err 的权重矩阵
 Q2 = np.diag(np.ones(P) * 1.0)  # 对应 err 的权重矩阵
-R_delta1 = np.diag(np.ones(M) * 0.0001)  # 对应 U[i+1] - U[i] 的权重矩阵
-R_delta2 = np.diag(np.ones(M) * 0.0001)  # 对应 U[i+1] - U[i] 的权重矩阵
+R_delta1 = np.diag(np.ones(M) * 0.001)  # 对应 U[i+1] - U[i] 的权重矩阵
+R_delta2 = np.diag(np.ones(M) * 0.001)  # 对应 U[i+1] - U[i] 的权重矩阵
 
 
 # 定义控制目标的范围
@@ -68,8 +73,6 @@ for k in range(total_steps + P):
         # 超过 total_steps 时保持不变
         r_1[k] = r_1[total_steps - 1]
         r_2[k] = r_2[total_steps - 1]
-
-
 
 #连续方程系数
 A_0_model = np.zeros((2,2))
@@ -212,6 +215,26 @@ for k in range(total_steps):
     for i in range(M - 1):
          model.addConstr(delta_u2[i + 1] == U[2 * i + 3] - U[2 * i + 1])
 
+    # 引入二进制变量 p(i) 和 q(i)
+    p1 = model.addMVar(M, vtype=GRB.BINARY, name="p1")
+    q1 = model.addMVar(M, vtype=GRB.BINARY, name="q1")
+    p2 = model.addMVar(M, vtype=GRB.BINARY, name="p2")
+    q2 = model.addMVar(M, vtype=GRB.BINARY, name="q2")
+
+    # 添加 p 和 q 的约束
+    for i in range(M):
+        model.addConstr(p1[i] + q1[i] <= 1)
+        model.addConstr(delta_u1[i] <= negative_delta_u1_constrain * p1[i] + delta_u1_max * (1 - p1[i]))
+        model.addConstr(delta_u1[i] >= positive_delta_u1_constrain * q1[i] + delta_u1_min * (1 - q1[i]))
+        model.addConstr(delta_u1[i] <= delta_u1_max * q1[i])
+        model.addConstr(delta_u1[i] >= delta_u1_min * p1[i])
+        model.addConstr(p2[i] + q2[i] <= 1)
+        model.addConstr(delta_u2[i] <= negative_delta_u2_constrain * p2[i] + delta_u2_max * (1 - p2[i]))
+        model.addConstr(delta_u2[i] >= positive_delta_u2_constrain * q2[i] + delta_u2_min * (1 - q2[i]))
+        model.addConstr(delta_u2[i] <= delta_u2_max * q2[i])
+        model.addConstr(delta_u2[i] >= delta_u2_min * p2[i])
+
+
     # 构建代价函数
     cost = gp.QuadExpr()
     cost +=  err1 @ Q1 @ err1  # 加权的 err 项
@@ -250,7 +273,7 @@ time = np.arange(total_steps)
 r1_plot = r_1[:total_steps]  # 只取前 total_steps 个数据点
 r2_plot = r_2[:total_steps]  # 只取前 total_steps 个数据点
 
-plt.figure(figsize=(60, 24))
+plt.figure(figsize=(12, 12))
 
 # 绘制 r_1 的图
 plt.subplot(4, 1, 1)
@@ -288,5 +311,3 @@ plt.title('Control Input (u_2) for r_2')
 
 plt.tight_layout()
 plt.show()
-
-print(u_history)
