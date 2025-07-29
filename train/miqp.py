@@ -10,8 +10,8 @@ K_actual = 0.85  # 实际增益
 T_actual = 22  # 实际时间常数
 Ts = 1  # 离散化步长
 D = 3  # 历史控制输入维度
-P = 50  # 预测时域
-M = 10  # 控制时域
+P = 20  # 预测时域
+M = 5  # 控制时域
 total_steps = 200  # 总时间步长
 external_disturbances = 0.01  # 外部扰动
 
