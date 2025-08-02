@@ -1,4 +1,4 @@
-# train_discrete.py
+# train_15L.py
 import os
 import gc
 import torch
@@ -8,14 +8,12 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
-# --------------------------------------------------
-# 1. 数据集封装
-# --------------------------------------------------
+# ---------- 1. 数据集 ----------
 class TimeSeriesDataset(Dataset):
     def __init__(self, file_path):
         data = pd.read_csv(file_path)
         self.X = data.iloc[:, :5].values.astype('float32')
-        self.Y = data.iloc[:, 5:].values.astype('float32')  # 原始就是 {-1,0,1}
+        self.Y = data.iloc[:, 5:].values.astype('float32')
         self.scaler = StandardScaler()
         self.X = self.scaler.fit_transform(self.X)
         self.X = torch.tensor(self.X)
@@ -27,67 +25,67 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.Y[idx]
 
-
-# --------------------------------------------------
-# 2. 网络结构（末尾无 Tanh）
-# --------------------------------------------------
+# ---------- 2. Pre-Activation ResBlock ----------
 class ResBlock(nn.Module):
-    def __init__(self, ch: int, dropout: float):
+    def __init__(self, ch, dropout):
         super().__init__()
         self.f = nn.Sequential(
-            nn.Linear(ch, ch),
+            nn.LayerNorm(ch),
             nn.SiLU(),
-            nn.Dropout(dropout),
             nn.Linear(ch, ch),
-            nn.SiLU()
+            nn.Dropout(dropout),
+            nn.LayerNorm(ch),
+            nn.SiLU(),
+            nn.Linear(ch, ch)
         )
 
     def forward(self, x):
         return x + self.f(x)
 
-
+# ---------- 3. 15 层网络 ----------
 class NonlinearDecisionNet(nn.Module):
     def __init__(self,
-                 in_dim: int = 5,
-                 out_dim: int = 5,
-                 base_ch: int = 512,
-                 depth: int = 10,
-                 dropout: float = 0.3):
+                 in_dim=5,
+                 out_dim=5,
+                 base_ch=512,
+                 depth=15,
+                 dropout=0.3):
         super().__init__()
         assert depth >= 3
-        layers = [nn.Linear(in_dim, base_ch), nn.SiLU(), nn.Dropout(dropout)]
+        layers = [nn.Linear(in_dim, base_ch), nn.LayerNorm(base_ch), nn.SiLU()]
 
         ch = base_ch
         for i in range(2, depth):
-            next_ch = min(int(ch * 1.6), 2048)
-            layers += [nn.Linear(ch, next_ch), nn.SiLU(), nn.Dropout(dropout)]
-            if i % 2 == 0 and ch == next_ch:
-                layers += [ResBlock(ch, dropout)]
-            ch = next_ch
+            # 每 3 层做一次残差
+            if (i - 2) % 3 == 0:
+                layers.append(ResBlock(ch, dropout))
+            # 通道瓶颈：512→768→1024→768→512
+            next_ch = min(int(base_ch * (1 + 0.5 * abs((i - 2) % 6 - 3))), 1536)
+            if ch != next_ch:
+                layers += [nn.Linear(ch, next_ch), nn.LayerNorm(next_ch), nn.SiLU()]
+                ch = next_ch
 
-        layers += [nn.Linear(ch, out_dim)]  # 不经过 Tanh，直接输出实数
+        layers.append(nn.Linear(ch, out_dim))
         self.net = nn.Sequential(*layers)
+
+        # kaiming 初始化
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         return self.net(x)
 
-
-# --------------------------------------------------
-# 3. 离散化 & 行准确率
-# --------------------------------------------------
-def discretize(x: torch.Tensor) -> torch.Tensor:
-    """x: (B,5) → (B,5) 取整到 {-1,0,1}"""
+# ---------- 4. 离散化 ----------
+def discretize(x):
     return torch.clip(torch.round(x), -1, 1)
 
+def row_accuracy(pred, target):
+    return (discretize(pred) == target).all(dim=1).float().mean().item()
 
-def row_accuracy(pred: torch.Tensor, target: torch.Tensor) -> float:
-    pred_d = discretize(pred)
-    return (pred_d == target).all(dim=1).float().mean().item()
-
-
-# --------------------------------------------------
-# 4. 通用 epoch：返回 (loss, row_acc)
-# --------------------------------------------------
+# ---------- 5. 通用 epoch ----------
 def run_epoch(model, loader, optimizer=None):
     device = next(model.parameters()).device
     is_train = optimizer is not None
@@ -105,22 +103,19 @@ def run_epoch(model, loader, optimizer=None):
             loss = criterion_mse(out, y)
             if is_train:
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
         total_loss += loss.item() * x.size(0)
         total_acc += row_accuracy(out, y) * x.size(0)
         n += x.size(0)
-
     return total_loss / n, total_acc / n
 
-
-# --------------------------------------------------
-# 5. 训练主循环
-# --------------------------------------------------
-def train(model, train_loader, valid_loader, epochs=100, lr=1e-3, model_dir='ckpt'):
-    os.makedirs(model_dir, exist_ok=True)
+# ---------- 6. 训练 ----------
+def train(model, train_loader, valid_loader, epochs=200, lr=1e-4, save_dir='model_dnn'):
+    os.makedirs(save_dir, exist_ok=True)
     device = next(model.parameters()).device
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=20, factor=0.5)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, factor=0.5)
 
     best_val = float('inf')
     for epoch in range(1, epochs + 1):
@@ -133,15 +128,11 @@ def train(model, train_loader, valid_loader, epochs=100, lr=1e-3, model_dir='ckp
               f'lr {optimizer.param_groups[0]["lr"]:.2e}')
         if val_loss < best_val:
             best_val = val_loss
-            torch.save(model.state_dict(), f'{model_dir}/best.pth')
+            torch.save(model.state_dict(), os.path.join(save_dir, 'best_15L.pth'))
         gc.collect()
 
-
-# --------------------------------------------------
-# 6. 主入口
-# --------------------------------------------------
+# ---------- 7. 主入口 ----------
 if __name__ == '__main__':
-    # 1. 数据（确保三个 csv 文件存在）
     train_ds = TimeSeriesDataset('solve_generated_data.csv')
     valid_ds = TimeSeriesDataset('solve_generated_data_e4.csv')
     test_ds  = TimeSeriesDataset('solve_generated_data_e5.csv')
@@ -151,14 +142,11 @@ if __name__ == '__main__':
     valid_loader = DataLoader(valid_ds, batch_size=batch, shuffle=False)
     test_loader  = DataLoader(test_ds,  batch_size=batch, shuffle=False)
 
-    # 2. 模型 & 设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = NonlinearDecisionNet(depth=10, base_ch=512, dropout=0.3).to(device)
+    model = NonlinearDecisionNet(depth=15, base_ch=512, dropout=0.2).to(device)
 
-    # 3. 训练
-    train(model, train_loader, valid_loader, epochs=200, lr=1e-3)
+    train(model, train_loader, valid_loader, epochs=100, lr=1e-4)
 
-    # 4. 测试
-    model.load_state_dict(torch.load('ckpt/best.pth'))
+    model.load_state_dict(torch.load('model_dnn/best_15L.pth'))
     test_loss, test_acc = run_epoch(model, test_loader)
     print(f'Test MSE: {test_loss:.6f}  Test Row Acc: {test_acc*100:.2f}%')
