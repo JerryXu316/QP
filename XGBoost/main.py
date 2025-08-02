@@ -35,7 +35,7 @@ def load_all(loader):
 
 
 train_loader = DataLoader(TimeSeriesDataset('solve_generated_data.csv'),
-                          batch_size=4096, shuffle=False)
+                          batch_size=4096, shuffle=True)
 valid_loader = DataLoader(TimeSeriesDataset('solve_generated_data_e4.csv'),
                           batch_size=4096, shuffle=False)
 test_loader = DataLoader(TimeSeriesDataset('solve_generated_data_e5.csv'),

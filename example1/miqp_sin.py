@@ -1,28 +1,24 @@
 import numpy as np
-from scipy.linalg import expm
+import control as ctrl
 import gurobipy as gp
 from gurobipy import GRB
 import matplotlib.pyplot as plt
 
 # 定义系统参数
-omega_n_model = 1.0 #自然频率
-delta_model = 0.5 #阻尼比（默认在0.4~0.8之间）
-omega_n_actual = 0.99 #自然频率
-delta_actual = 0.55 #阻尼比（默认在0.4~0.8之间）
 Ts = 1
 D = 15
 P = 50
 M = 10
-total_steps = 200
-external_disturbances = 0.05
+total_steps = 300
+external_disturbances = 0.01
 
 # 约束
 u_min = -3.0
 u_max = 3.0
 delta_u_min = -1.5
 delta_u_max = 1.5
-positive_delta_u_constrain = 0.8
-negative_delta_u_constrain = -0.8
+positive_delta_u_constrain = 0.2
+negative_delta_u_constrain = -0.2
 
 
 # 定义代价函数的权重系数
@@ -36,47 +32,47 @@ r = np.zeros(total_steps + P)
 for i in range(total_steps + P):
     r[i] = 0.5 * np.sin(2 * np.pi * (1.0 / 100.0) * i) + 1.0
 
-#连续方程系数
-A_0_model = np.zeros((2,2))
-A_0_model[0,0] = 0.0
-A_0_model[0,1] = 1.0
-A_0_model[1,0] = -omega_n_model * omega_n_model
-A_0_model[1,1] = -2.0 * delta_model * omega_n_model
+# ------------------ 系统参数 ------------------
+b_1_model, b_0_model = 2.0, 1.0   # 分子系数 [b_m, b_{m-1}, ..., b_0]
+a_2_model, a_1_model, a_0_model = 1.0, 3.0, 2.0   # 分母系数 [a_n, a_{n-1}, ..., a_0]
 
-B_0_model = np.zeros((2,1))
-B_0_model[0,0] = 0.0
-B_0_model[1,0] = omega_n_model * omega_n_model
+# 连续时间传递函数
+num_model = [b_1_model, b_0_model]
+den_model = [a_2_model, a_1_model, a_0_model]
 
-C_0_model = np.zeros((1,2))
-C_0_model[0,0] = 1.0
-C_0_model[0,1] = 0.0
+sys_tf_model = ctrl.TransferFunction(num_model, den_model)
 
-D_0_model = 0.0
+# 转换为连续时间状态空间
+sys_ss_model = ctrl.ss(sys_tf_model)
 
-A_0_actual = np.zeros((2,2))
-A_0_actual[0,0] = 0.0
-A_0_actual[0,1] = 1.0
-A_0_actual[1,0] = -omega_n_actual * omega_n_actual
-A_0_actual[1,1] = -2.0 * delta_actual * omega_n_actual
 
-B_0_actual = np.zeros((2,1))
-B_0_actual[0,0] = 0.0
-B_0_actual[1,0] = omega_n_actual * omega_n_actual
+sys_d_model = ctrl.c2d(sys_ss_model, Ts, method='zoh')   # 零阶保持法离散化（也可以选择其他的方法）
 
-C_0_actual = np.zeros((1,2))
-C_0_actual[0,0] = 1.0
-C_0_actual[0,1] = 0.0
+# 提取离散状态空间矩阵
+A_d_model, B_d_model, C_d_model, D_d_model = sys_d_model.A, sys_d_model.B, sys_d_model.C, sys_d_model.D
+print("离散状态空间矩阵：")
+print("Ad_model =\n", A_d_model, "\nBd_model =\n", B_d_model, "\nCd_model =", C_d_model, "\nDd_model =", D_d_model)
 
-D_0_actual = 0.0
+# ------------------ 实际参数 ------------------
+b_1_actual, b_0_actual = 2.01, 0.99   # 分子系数 [b_m, b_{m-1}, ..., b_0]
+a_2_actual, a_1_actual, a_0_actual = 1.0, 3.01, 2.01   # 分母系数 [a_n, a_{n-1}, ..., a_0]
 
-# 离散化系数
-A_d_model = expm(A_0_model * Ts)
-expA_minus_I_model = expm(A_0_model * Ts) - np.eye(2)
-B_d_model = np.linalg.solve(A_0_model, expA_minus_I_model @ B_0_model)
+# 连续时间传递函数
+num_actual = [b_1_actual, b_0_actual]
+den_actual = [a_2_actual, a_1_actual, a_0_actual]
+sys_tf_actual = ctrl.TransferFunction(num_actual, den_actual)
 
-A_d_actual = expm(A_0_actual * Ts)
-expA_minus_I_actual = expm(A_0_actual * Ts) - np.eye(2)
-B_d_actual = np.linalg.solve(A_0_actual, expA_minus_I_actual @ B_0_actual)
+# 转换为连续时间状态空间
+sys_ss_actual = ctrl.ss(sys_tf_actual)
+
+
+sys_d_actual = ctrl.c2d(sys_ss_actual, Ts, method='zoh')   # 零阶保持法离散化（也可以选择其他的方法）
+
+# 提取离散状态空间矩阵
+A_d_actual, B_d_actual, C_d_actual, D_d_actual = sys_d_actual.A, sys_d_actual.B, sys_d_actual.C, sys_d_actual.D
+print("离散状态空间矩阵：")
+print("Ad_actual =\n", A_d_actual, "\nBd_actual =\n", B_d_actual, "\nCd_actual =", C_d_actual, "\nDd_actual =", D_d_actual)
+
 
 # 状态矩阵
 n = D + 2
@@ -96,11 +92,16 @@ for i in range(3, n):
 
 b = np.zeros((n, 1))
 b[2, 0] = 1
-c = np.zeros((1, n))
-c[0, 0] = 1
 
-C = np.zeros(n)
-C[0] = 1
+C_model = np.zeros((1, n))
+C_model[0, 0] = C_d_model[0, 0]
+C_model[0, 1] = C_d_model[0, 1]
+
+C_actual = np.zeros((1, n))
+C_actual[0, 0] = C_d_actual[0, 0]
+C_actual[0, 1] = C_d_actual[0, 1]
+
+
 
 # Fx 和 Gx
 Fx = np.zeros((n * P, n))
@@ -116,12 +117,12 @@ for i in range(P):
 Fy = np.zeros((P, n))
 Gy = np.zeros((P, M))
 for i in range(P):
-    Fy[i, :] = c @ np.linalg.matrix_power(A_model, i + 1)
+    Fy[i, :] = C_model @ np.linalg.matrix_power(A_model, i + 1)
 for i in range(P):
     for j in range(min(i + 1, M)):
-        Gy[i, j] = (c @ np.linalg.matrix_power(A_model, i - j) @ b).item()
+        Gy[i, j] = (C_model @ np.linalg.matrix_power(A_model, i - j) @ b).item()
     if i >= M:
-        Gy[i, M - 1] = sum((c @ np.linalg.matrix_power(A_model, j) @ b).item() for j in range(i - M + 1))
+        Gy[i, M - 1] = sum((C_model @ np.linalg.matrix_power(A_model, j) @ b).item() for j in range(i - M + 1))
 
 # 初始化状态
 x_model = np.zeros(n)
@@ -181,7 +182,7 @@ for k in range(total_steps):
     # 应用第一个控制输入到实际系统
     u = u_optimal[0]
     x_actual = x_actual @ A_actual.T + (b * u).T
-    y_actual = x_actual @ C
+    y_actual = x_actual @ C_actual.T
     y_actual = float(np.squeeze(y_actual))
 
     # 添加干扰和噪声

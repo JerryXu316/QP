@@ -1,24 +1,10 @@
 import numpy as np
-from scipy.linalg import expm
+import control as ctrl
 import gurobipy as gp
 from gurobipy import GRB
 import matplotlib.pyplot as plt
 
 # 定义系统参数
-a_1_model = 0.10
-a_2_model = 0.08
-b_1_model = 1.5
-b_2_model = 1.2
-c_1_model = 0.5
-c_2_model = 0.4
-
-a_1_actual = 0.102
-a_2_actual = 0.082
-b_1_actual = 1.52
-b_2_actual = 1.22
-c_1_actual = 0.51
-c_2_actual = 0.41
-
 Ts = 1
 D = 15
 P = 50
@@ -71,40 +57,86 @@ for k in range(total_steps + P):
 
 
 
-#连续方程系数
-A_0_model = np.zeros((2,2))
-A_0_model[0,0] = -a_1_model
-A_0_model[0,1] = 0
-A_0_model[1,0] = 0
-A_0_model[1,1] = -a_2_model
+# 定义系统参数（可以外部调整）
+a_11_model = -1.0  # 状态矩阵 A 的元素
+a_12_model = -0.5
+a_21_model = 0.5
+a_22_model = -2.0
 
-B_0_model = np.zeros((2,2))
-B_0_model[0,0] = b_1_model
-B_0_model[0,1] = c_1_model
-B_0_model[1,0] = b_2_model
-B_0_model[1,1] = c_2_model
+b_11_model = 1.0  # 输入矩阵 B 的元素
+b_12_model = 0.2
+b_21_model = 0.1
+b_22_model = 1.5
+
+c_11_model = 1.0  # 输出矩阵 C 的元素
+c_12_model = 0.0
+c_21_model = 0.0
+c_22_model = 1.0
+
+d_11_model = 0.0  # 传递矩阵 D 的元素
+d_12_model = 0.0
+d_21_model = 0.0
+d_22_model = 0.0
+
+A_model = np.array([[a_11_model, a_12_model], [a_21_model, a_22_model]])    # 2x2 状态矩阵
+B_model = np.array([[b_11_model, b_12_model], [b_21_model, b_22_model]])      # 2x2 输入矩阵
+C_model = np.array([[c_11_model, c_12_model], [c_21_model, c_22_model]])      # 2x2 输出矩阵
+D_model = np.array([[d_11_model, d_12_model], [d_21_model, d_22_model]])      # 2x2 传递矩阵
+
+# 创建一个连续时间的MIMO状态空间系统
+sys_ss_model = ctrl.ss(A_model, B_model, C_model, D_model)
 
 
-A_0_actual = np.zeros((2,2))
-A_0_actual[0,0] = -a_1_actual
-A_0_actual[0,1] = 0
-A_0_actual[1,0] = 0
-A_0_actual[1,1] = -a_2_actual
+# 离散化MIMO系统
+sys_d_model = ctrl.c2d(sys_ss_model, Ts, method='zoh')  # 使用零阶保持法
 
-B_0_actual = np.zeros((2,2))
-B_0_actual[0,0] = b_1_actual
-B_0_actual[0,1] = c_1_actual
-B_0_actual[1,0] = b_2_actual
-B_0_actual[1,1] = c_2_actual
+# 获取离散化后的状态空间矩阵
+A_d_model, B_d_model, C_d_model, D_d_model = sys_d_model.A, sys_d_model.B, sys_d_model.C, sys_d_model.D
 
-# 离散化系数
-A_d_model = expm(A_0_model * Ts)
-expA_minus_I_model = expm(A_0_model * Ts) - np.eye(2)
-B_d_model = np.linalg.solve(A_0_model, expA_minus_I_model @ B_0_model)
+print("离散化后的A_d矩阵：\n", A_d_model)
+print("离散化后的B_d矩阵：\n", B_d_model)
+print("离散化后的C_d矩阵：\n", C_d_model)
+print("离散化后的D_d矩阵：\n", D_d_model)
 
-A_d_actual = expm(A_0_actual * Ts)
-expA_minus_I_actual = expm(A_0_actual * Ts) - np.eye(2)
-B_d_actual = np.linalg.solve(A_0_actual, expA_minus_I_actual @ B_0_actual)
+a_11_actual = -1.01  # 状态矩阵 A 的元素
+a_12_actual = -0.49
+a_21_actual = 0.51
+a_22_actual = -2.01
+
+b_11_actual = 1.01  # 输入矩阵 B 的元素
+b_12_actual = 0.19
+b_21_actual = 0.11
+b_22_actual = 1.52
+
+c_11_actual = 1.0  # 输出矩阵 C 的元素
+c_12_actual = 0.0
+c_21_actual = 0.0
+c_22_actual = 1.0
+
+d_11_actual = 0.0  # 传递矩阵 D 的元素
+d_12_actual = 0.0
+d_21_actual = 0.0
+d_22_actual = 0.0
+
+A_actual = np.array([[a_11_actual, a_12_actual], [a_21_actual, a_22_actual]])    # 2x2 状态矩阵
+B_actual = np.array([[b_11_actual, b_12_actual], [b_21_actual, b_22_actual]])      # 2x2 输入矩阵
+C_actual = np.array([[c_11_actual, c_12_actual], [c_21_actual, c_22_actual]])      # 2x2 输出矩阵
+D_actual = np.array([[d_11_actual, d_12_actual], [d_21_actual, d_22_actual]])      # 2x2 传递矩阵
+
+# 创建一个连续时间的MIMO状态空间系统
+sys_ss_actual = ctrl.ss(A_actual, B_actual, C_actual, D_actual)
+
+
+# 离散化MIMO系统
+sys_d_actual = ctrl.c2d(sys_ss_actual, Ts, method='zoh')  # 使用零阶保持法
+
+# 获取离散化后的状态空间矩阵
+A_d_actual, B_d_actual, C_d_actual, D_d_actual = sys_d_actual.A, sys_d_actual.B, sys_d_actual.C, sys_d_actual.D
+
+print("离散化后的A_d矩阵：\n", A_d_actual)
+print("离散化后的B_d矩阵：\n", B_d_actual)
+print("离散化后的C_d矩阵：\n", C_d_actual)
+print("离散化后的D_d矩阵：\n", D_d_actual)
 
 # 状态矩阵
 n = 2 * D + 2
