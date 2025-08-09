@@ -11,7 +11,7 @@ D = 15
 P = 50
 M = 10
 total_steps = 70
-external_disturbances = 0.01
+external_disturbances = 0.0
 
 # 约束
 u1_min = -3.0
@@ -80,15 +80,15 @@ print("离散化后的B_d矩阵：\n", B_d_model)
 print("离散化后的C_d矩阵：\n", C_d_model)
 print("离散化后的D_d矩阵：\n", D_d_model)
 
-a_11_actual = -1.01  # 状态矩阵 A 的元素
-a_12_actual = -0.49
-a_21_actual = 0.51
-a_22_actual = -2.01
+a_11_actual = -1.0  # 状态矩阵 A 的元素
+a_12_actual = -0.5
+a_21_actual = 0.5
+a_22_actual = -2.0
 
-b_11_actual = 1.01  # 输入矩阵 B 的元素
-b_12_actual = 0.19
-b_21_actual = 0.11
-b_22_actual = 1.52
+b_11_actual = 1.0 # 输入矩阵 B 的元素
+b_12_actual = 0.2
+b_21_actual = 0.1
+b_22_actual = 1.5
 
 c_11_actual = 1.0  # 输出矩阵 C 的元素
 c_12_actual = 0.0
@@ -286,6 +286,8 @@ x_actual = np.zeros(n)
 
 y_actual_history = np.zeros((2,total_steps))
 u_history = np.zeros((2,total_steps))
+u_actual= np.zeros((2,total_steps))
+
 flag = np.zeros((2,total_steps))
 
 for k in range(total_steps):
@@ -293,6 +295,12 @@ for k in range(total_steps):
         u_previous = np.zeros((2, 1))
     else:
         u_previous = u_history[:, k - 1]
+
+    if k == 0:
+        u_previous_actual = np.zeros((2, 1))
+    else:
+        u_previous_actual = u_actual[:, k - 1]
+
     model = gp.Model("qp")
 
     # 控制变量
@@ -351,29 +359,33 @@ for k in range(total_steps):
     # 应用第一个控制输入到实际系统
     unew = np.zeros((2,1))
 
-    du_1 = u_optimal[0] - u_previous[0]
+    du_1 = u_optimal[0] - u_previous_actual[0]
     if du_1 == 0.0:
-        unew[0, 0] = u_previous[0]
+        unew[0, 0] = u_previous_actual[0]
         flag[0, k] = 0.0
     elif negative_delta_u1_constrain < du_1 < positive_delta_u1_constrain:
-        unew[0, 0] = u_previous[0]
+        unew[0, 0] = u_previous_actual[0]
         flag[0, k] = 1.0
     else:
         unew[0, 0] = u_optimal[0]
         flag[0, k] = 0.0
 
-    du_2 = u_optimal[1] - u_previous[1]
+    du_2 = u_optimal[1] - u_previous_actual[1]
     if du_2 == 0.0:
-        unew[1, 0] = u_previous[1]
+        unew[1, 0] = u_previous_actual[1]
         flag[1, k] = 0.0
     elif negative_delta_u1_constrain < du_2 < positive_delta_u1_constrain:
-        unew[1, 0] = u_previous[1]
+        unew[1, 0] = u_previous_actual[1]
         flag[1, k] = 1.0
     else:
         unew[1, 0] = u_optimal[1]
         flag[1, k] = 0.0
 
+    u = np.zeros((2,1))
+    u[0, 0] = u_optimal[0]
+    u[1, 0] = u_optimal[1]
 
+    x_model = x_model @ A_actual.T + (b @ u).T
     x_actual = x_actual @ A_actual.T + (b @ unew).T
     y_actual = x_actual @ C
     y_actual = y_actual.T
@@ -384,10 +396,9 @@ for k in range(total_steps):
 
     # 保存
     y_actual_history[:,k] = np.squeeze(y_actual)
-    u_history[:,k] = np.squeeze(unew)
+    u_history[:,k] = np.squeeze(u)
+    u_actual[:,k] = np.squeeze(unew)
 
-    # 更新模型状态
-    x_model = x_actual
 
 # 可视化
 time = np.arange(total_steps)
@@ -402,10 +413,10 @@ plt.plot(time, y_actual_history_miqp[0, :], color='tab:orange', label='Discrete 
 plt.plot(time, y_actual_history[0, :],      color='tab:blue',  label='Continuous MPC Output (r₁)')
 plt.plot(time, r1_plot, 'g--', label='Reference (r₁)')
 
-# 红点：flag[0, k] == 1 的连续 MPC
-red1 = np.where(flag[0] == 1)[0]
-if red1.size:
-    plt.scatter(red1, y_actual_history[0, red1], color='red', s=20, zorder=5)
+# # 红点：flag[0, k] == 1 的连续 MPC
+# red1 = np.where(flag[0] == 1)[0]
+# if red1.size:
+#     plt.scatter(red1, y_actual_history[0, red1], color='red', s=20, zorder=5)
 
 plt.xlabel('Time Step')
 plt.ylabel('Output')
@@ -414,11 +425,12 @@ plt.title('System Output vs Reference for r₁')
 
 # ---------- 控制 u1 ----------
 plt.subplot(4, 1, 2)
-plt.plot(time, u_history_miqp[0, :], color='tab:orange', label='Discrete MPC Input (u₁)')
-plt.plot(time, u_history[0, :],      color='tab:blue',  label='Continuous MPC Input (u₁)')
+# plt.plot(time, u_history_miqp[0, :], color='tab:orange', label='Discrete MPC Input (u₁)')
+plt.plot(time, u_history[0, :],      color='tab:blue',  label='Continuous MPC(model) Input (u₁)')
+plt.plot(time, u_actual[0, :],      color='tab:red',  label='Continuous MPC(actual) Input (u₁)')
 
-if red1.size:
-    plt.scatter(red1, u_history[0, red1], color='red', s=20, zorder=5)
+# if red1.size:
+#     plt.scatter(red1, u_history[0, red1], color='red', s=20, zorder=5)
 
 plt.xlabel('Time Step')
 plt.ylabel('Control Input')
@@ -431,10 +443,10 @@ plt.plot(time, y_actual_history_miqp[1, :], color='tab:orange', label='Discrete 
 plt.plot(time, y_actual_history[1, :],      color='tab:blue',  label='Continuous MPC Output (r₂)')
 plt.plot(time, r2_plot, 'g--', label='Reference (r₂)')
 
-# 红点：flag[1, k] == 1 的连续 MPC
-red2 = np.where(flag[1] == 1)[0]
-if red2.size:
-    plt.scatter(red2, y_actual_history[1, red2], color='red', s=20, zorder=5)
+# # 红点：flag[1, k] == 1 的连续 MPC
+# red2 = np.where(flag[1] == 1)[0]
+# if red2.size:
+#     plt.scatter(red2, y_actual_history[1, red2], color='red', s=20, zorder=5)
 
 plt.xlabel('Time Step')
 plt.ylabel('Output')
@@ -443,11 +455,12 @@ plt.title('System Output vs Reference for r₂')
 
 # ---------- 控制 u2 ----------
 plt.subplot(4, 1, 4)
-plt.plot(time, u_history_miqp[1, :], color='tab:orange', label='Discrete MPC Input (u₂)')
-plt.plot(time, u_history[1, :],      color='tab:blue',  label='Continuous MPC Input (u₂)')
+# plt.plot(time, u_history_miqp[1, :], color='tab:orange', label='Discrete MPC Input (u₂)')
+plt.plot(time, u_history[1, :],      color='tab:blue',  label='Continuous MPC(model) Input (u₂)')
+plt.plot(time, u_actual[1, :],      color='tab:red',  label='Continuous MPC(actual) Input (u₂)')
 
-if red2.size:
-    plt.scatter(red2, u_history[1, red2], color='red', s=20, zorder=5)
+# if red2.size:
+#     plt.scatter(red2, u_history[1, red2], color='red', s=20, zorder=5)
 
 plt.xlabel('Time Step')
 plt.ylabel('Control Input')

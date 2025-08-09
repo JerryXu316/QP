@@ -111,7 +111,7 @@ def run_epoch(model, loader, optimizer=None):
     return total_loss / n, total_acc / n
 
 # ---------- 6. 训练 ----------
-def train(model, train_loader, valid_loader, epochs=200, lr=1e-4, save_dir='model_dnn'):
+def train(model, train_loader, valid_loader, epochs=100, lr=1e-4, save_dir='model_dnn'):
     os.makedirs(save_dir, exist_ok=True)
     device = next(model.parameters()).device
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
